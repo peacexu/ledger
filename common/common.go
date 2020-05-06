@@ -14,16 +14,17 @@ type Register struct {
 
 //联系人列表
 type Entity struct {
-	Id      int64	`json:"id"`
+	Id      string	`json:"id"`
 	Initial string	`json:"initial"`
 	Name    string	`json:"name"`
+	Info string `json:"info"`
 }
 type Contacts struct {
 	Kind    string	`json:"kind"`
 	Entitys []*Entity `json:"entitys"`
 }
 type ContactsResponse struct {
-	ContactsList []*Contacts `json:"contacts_list"`
+	ContactsList []*Contacts `json:"contactsList"`
 	Total int	`json:"total"`
 }
 
@@ -35,6 +36,28 @@ type AddContacter struct {
 	Memo string `json:"memo"`
 	Money int32 `json:"money"`
 	Type int32 `json:"type"`
+}
+
+//联系人详情
+type CDetail struct {
+	DetailId string `json:"detail_id"`
+	Id string `json:"id"`
+	Time string	`json:"time"`
+	Money int32	`json:"money"`
+	Memo string	`json:"memo"`
+	Type int32	`json:"type"`
+}
+
+type Summary struct {
+	SId int32 `json:"s_id"`
+	CCount int32 `json:"c_count"`
+	GCount int32 `json:"g_count"`
+	Difference int32 `json:"difference"`
+}
+
+type GetContactInfo struct {
+	CDetail []*CDetail `json:"c_detail"`
+	Summary []*Summary `json:"summary"`
 }
 
 

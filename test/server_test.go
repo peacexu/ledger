@@ -42,7 +42,7 @@ func TestAddContacter(t *testing.T) {
 func TestGetContacterInfo(t *testing.T) {
 	router := service.SetupRouter()
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/getContacterInfo?user_id=441629910608379904&page=0", nil)
+	req, _ := http.NewRequest("GET", "/contact?user_id=441813108315389950&page=0", nil)
 	router.ServeHTTP(w,req)
 	log.Println(w.Body.String())
 }

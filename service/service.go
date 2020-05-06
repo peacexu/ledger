@@ -29,8 +29,19 @@ func SetupRouter() *gin.Engine {
 	r := gin.Default()
 	r.POST("/login",login)
 	r.POST("/register",register)
-	r.GET("/getContacterInfo",getContacterInfo)
+
+	r.GET("/contact",contact)
 	r.POST("/addContacter",addContacter)
+	r.POST("/editContact",editContact)
+	r.POST("/deleteContact",deleteContact)
+
+	r.GET("/getContactInfo",getContactInfo)
+	r.POST("/addRecord",addRecord)
+	r.POST("/editRecord",editRecord)
+	r.POST("/deleteRecord",deleteRecord)
+
+
+
 	return r
 }
 
@@ -109,7 +120,7 @@ func register(c *gin.Context) {
 }
 
 //get contacter info
-func getContacterInfo(c *gin.Context) {
+func contact(c *gin.Context) {
 	userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, "invalid user id")
@@ -139,18 +150,21 @@ func getContacterInfo(c *gin.Context) {
 	for _, p := range contactPersons {
 		if p.Kind != kind {
 			if entityList != nil && len(entityList) > 0 {
+				logrus.Debug("contacts.Kind:",kind)
+				logrus.Debug("contacts.Entitys = ",entityList[0])
 				contacts.Kind = kind
 				contacts.Entitys = entityList
 				contactsList = append(contactsList, contacts)
 			}
 			contacts = new(common.Contacts)
-			entityList = entityList[0:0]
+			entityList = make([]*common.Entity,0)
 			kind = p.Kind
 		}
 		entity := common.Entity{
-			Id:      p.Id,
+			Id:      strconv.FormatInt(p.Id,10),
 			Initial: p.Kind,
 			Name:    p.Name,
+			Info:*p.Info,
 		}
 		entityList = append(entityList, &entity)
 	}
@@ -194,15 +208,8 @@ func addContacter(c *gin.Context)  {
 		Updatetime: time.Now().UnixNano(),
 	}
 
-	a := pinyin.NewArgs()
-	pin := pinyin.Pinyin(contact.Name, a)
-	logrus.Debug("pinyin:",pin)
-	if len(pin) > 0 && len(pin[0]) >0 && len(pin[0][0]) > 0{
-		contactPersonModel.Kind = strings.ToUpper(pin[0][0][0:1])
-		logrus.Info("contact person kind:",contactPersonModel.Kind)
-	}else {
-		contactPersonModel.Kind = "Z"
-	}
+	logrus.Debug("concat name:",contact.Name)
+	contactPersonModel.Kind = getKind(contact.Name)
 	_, err = dao.AddConcatPerson(&contactPersonModel)
 	if err != nil {
 		logrus.Errorf("call dao.AddConcatPerson err:",err)
@@ -234,3 +241,211 @@ func addContacter(c *gin.Context)  {
 
 }
 
+//editContact
+func editContact(c *gin.Context)  {
+	contactId, err := strconv.ParseInt(c.Query("id"), 10, 64)
+	if err != nil {
+		logrus.Error("cat not get id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get id")
+		return
+	}
+
+	var entity common.Entity
+	err = c.ShouldBindJSON(&entity)
+	if err != nil {
+		logrus.Error("can not get data err:",err)
+		c.JSON(http.StatusBadRequest,"can not get data")
+		return
+	}
+	var PersonModel ledger_dsl.ContactPersonModel
+	PersonModel.Id = contactId
+	if entity.Name != "" {
+		PersonModel.Name = entity.Name
+		PersonModel.Kind = getKind(entity.Name)
+	}
+	if entity.Info != "" {
+		PersonModel.Info =&entity.Info
+	}
+	_, err = dao.UpdateConcatPerson(&PersonModel)
+	if err != nil {
+		logrus.Error("call dao.UpdateConcatPerson err:",err)
+		c.JSON(http.StatusExpectationFailed,"update contact person err")
+		return
+	}
+	c.JSON(http.StatusOK,"update success !!")
+}
+
+func deleteContact(c *gin.Context) {
+	contactId, err := strconv.ParseInt(c.Query("id"), 10, 64)
+	if err != nil {
+		logrus.Error("cat not get id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get id")
+		return
+	}
+	personModel := ledger_dsl.ContactPersonModel{Id: contactId, Status: 2}
+	_, err = dao.UpdateConcatPerson(&personModel)
+	if err != nil {
+		logrus.Error("update contact person err:",err)
+		c.JSON(http.StatusExpectationFailed,"delete contact person err")
+		return
+	}
+	c.JSON(http.StatusOK,"delete success !!")
+}
+
+//getContactInfo
+func getContactInfo(c *gin.Context) {
+	contactId, err := strconv.ParseInt(c.Query("id"), 10, 64)
+	if err != nil {
+		logrus.Error("cat not get id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get id")
+		return
+	}
+	counts, err := dao.GetUserCount(contactId)
+	if err != nil {
+		logrus.Error("call dao.GetUserCount err:",err)
+		c.JSON(http.StatusBadRequest,"can not get user count")
+		return
+	}
+
+	var cDetailList []*common.CDetail
+	var summary common.Summary
+	var summaryList []*common.Summary
+	var contactInfo common.GetContactInfo
+
+	for _, count := range counts {
+		cDetail := common.CDetail{
+			DetailId: strconv.FormatInt(count.Id,10),
+			Time:     count.Time,
+			Money:    count.Money,
+			Memo:     *count.Memo,
+			Type:     count.Type,
+		}
+		if count.Type == 1 {
+			summary.CCount += count.Money
+		}else if count.Type == 2 {
+			summary.GCount += count.Money
+		}
+		cDetailList = append(cDetailList,&cDetail)
+	}
+	summary.Difference = summary.CCount - summary.GCount
+	summary.SId = 1
+	summaryList = append(summaryList,&summary)
+	contactInfo.CDetail = cDetailList
+	contactInfo.Summary = summaryList
+
+	js, err := json.Marshal(contactInfo)
+	if err != nil {
+		logrus.Error("json.Marshal contactInfo err:",err)
+		c.JSON(http.StatusBadRequest,"json.Marshal contact err")
+		return
+	}
+
+	c.JSON(http.StatusOK,string(js))
+
+}
+
+func addRecord(c *gin.Context) {
+	var cDetail common.CDetail
+	err := c.ShouldBindJSON(&cDetail)
+	if err != nil {
+		logrus.Error("can not get data err:",err)
+		c.JSON(http.StatusBadRequest,"can not get data")
+		return
+	}
+	if cDetail.Id == "" || cDetail.Money <=0 || cDetail.Type <= 0{
+		logrus.Error("can not get id or money or type")
+		c.JSON(http.StatusBadRequest,"can not get id or money or type")
+		return
+	}
+	id, err := strconv.ParseInt(cDetail.Id, 10, 64)
+	if err != nil {
+		logrus.Error("can not get id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get id")
+		return
+	}
+	userCountModel := ledger_dsl.UserCountModel{
+		Id:              common.GenerateIds(1)[0],
+		ContactPersonId: id,
+		Money:           cDetail.Money,
+		Type:            cDetail.Type,
+		Createtime:      time.Now().UnixNano(),
+		Updatetime:      time.Now().UnixNano(),
+		Status:          1,
+		Time:            cDetail.Time,
+		Memo:            &cDetail.Memo,
+	}
+	_, err = dao.AddUserCount(&userCountModel)
+	if err != nil {
+		logrus.Error("call dao.AddUserCount err:",err)
+		c.JSON(http.StatusExpectationFailed,"add user count err")
+		return
+	}
+	c.JSON(http.StatusOK,"add success!!")
+}
+
+func editRecord(c *gin.Context) {
+	userCountId, err := strconv.ParseInt(c.Query("detail_id"), 10, 64)
+	if err != nil {
+		logrus.Error("cat not get detail_id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get detail_id")
+		return
+	}
+
+	var cDetail common.CDetail
+	err = c.ShouldBindJSON(&cDetail)
+	if err != nil {
+		logrus.Error("can not get data err:",err)
+		c.JSON(http.StatusBadRequest,"can not get data")
+		return
+	}
+	userCountModel := ledger_dsl.UserCountModel{
+		Id:              userCountId,
+		Money:           cDetail.Money,
+		Type:            cDetail.Type,
+		Updatetime:      time.Now().UnixNano(),
+		Time:            cDetail.Time,
+		Memo:            &cDetail.Memo,
+	}
+	_, err = dao.UpdateUserCount(&userCountModel)
+	if err != nil {
+		logrus.Error("call dao.UpdateUserCount err:",err)
+		c.JSON(http.StatusExpectationFailed,"edit user count err")
+		return
+	}
+	c.JSON(http.StatusOK,"edit success !!")
+
+}
+
+func deleteRecord(c *gin.Context)  {
+	userCountId, err := strconv.ParseInt(c.Query("detail_id"), 10, 64)
+	if err != nil {
+		logrus.Error("cat not get detail_id err:",err)
+		c.JSON(http.StatusBadRequest,"can not get detail_id")
+		return
+	}
+
+	userCountModel := ledger_dsl.UserCountModel{Id: userCountId, Status: 2}
+
+	_, err = dao.UpdateUserCount(&userCountModel)
+	if err != nil {
+		logrus.Error("call dao.UpdateUserCount err:",err)
+		c.JSON(http.StatusExpectationFailed,"delete user count err")
+		return
+	}
+	c.JSON(http.StatusOK,"delete success !!")
+}
+
+func getKind(name string) string  {
+	a := pinyin.NewArgs()
+	pin := pinyin.Pinyin(name, a)
+	logrus.Debug("pinyin:",pin)
+	var kind string
+	if len(pin) > 0 && len(pin[0]) >0 && len(pin[0][0]) > 0{
+		kind = strings.ToUpper(pin[0][0][0:1])
+		logrus.Info("parse chinese: contact person kind:",kind)
+	}else {
+		kind = strings.ToUpper(name[0:1])
+		logrus.Info("can not parse :contact person kind:",kind)
+	}
+	return kind
+}
