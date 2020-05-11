@@ -139,19 +139,23 @@ func GetUserCount(contactId int64) ([]*ledger_dsl.UserCountModel, error) {
 
 }
 
+//更新来往记录
 func UpdateUserCount(model *ledger_dsl.UserCountModel) (bool, error) {
 	update := db.Update(ledger_dsl.UserCount)
 	if model.Time != "" {
 		update = update.Set(ledger_dsl.UserCount.Time,model.Time)
 	}
 	if model.Money > 0 {
-		update = update.Set(ledger_dsl.UserCount.Money,model.Time)
+		update = update.Set(ledger_dsl.UserCount.Money,model.Money)
 	}
 	if model.Memo != nil {
 		update = update.Set(ledger_dsl.UserCount.Memo,model.Memo)
 	}
 	if model.Type > 0 {
 		update = update.Set(ledger_dsl.UserCount.Type,model.Type)
+	}
+	if model.Status > 0 {
+		update = update.Set(ledger_dsl.UserCount.Status,model.Status)
 	}
 	_,err := update.Set(ledger_dsl.UserCount.Updatetime, time.Now().UnixNano()).Where(ledger_dsl.UserCount.Id.Equals(model.Id)).Execute()
 	if err != nil {

@@ -402,7 +402,6 @@ func editRecord(c *gin.Context) {
 		Id:              userCountId,
 		Money:           cDetail.Money,
 		Type:            cDetail.Type,
-		Updatetime:      time.Now().UnixNano(),
 		Time:            cDetail.Time,
 		Memo:            &cDetail.Memo,
 	}
